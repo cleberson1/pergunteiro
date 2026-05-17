@@ -52,7 +52,7 @@ def inicializar_sessao():
 def main():
     inicializar_sessao()
 
-    st.title("📄 Analisador de Editais com DeepSeek AI (Versão Web)")
+    st.title("📄 Analisador de Editais com IA 🎯")
     st.markdown("""
     Este aplicativo analisa seus documentos PDF e responde perguntas automáticas baseadas nos editais
     cadastrados no arquivo `bd.csv` que você fará upload.
