@@ -5,7 +5,7 @@ from openai import OpenAI
 import io
 
 # Configuração inicial da página
-st.set_page_config(page_title="Analisador de Editais - DeepSeek Web", layout="wide")
+st.set_page_config(page_title="Analisador de Editais 🎯", layout="wide")
 
 def extrair_texto_pdf(arquivos_pdf):
     """Extrai e concatena o texto de até 3 PDFs, limitando a 10.000 caracteres."""
