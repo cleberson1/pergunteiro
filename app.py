@@ -137,7 +137,7 @@ def main():
         return
     
     # --- UPLOAD DE PDFs NA ÁREA PRINCIPAL ---
-    st.subheader("📄 Documentos do Proponente (PDF)")
+    st.subheader("📄 Documentação para análise (em pdf)")
     st.markdown("Faça upload dos documentos do projeto que será avaliado (formulário de inscrição, currículos, anexos, etc.)")
     
     uploaded_files = st.file_uploader(
