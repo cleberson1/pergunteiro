@@ -5,10 +5,10 @@ from openai import OpenAI
 import io
 
 # Configuração inicial da página
-st.set_page_config(page_title="Analisador de Editais", layout="wide")
+st.set_page_config(page_title="Analisador de Editais - DeepSeek Web", layout="wide")
 
 def extrair_texto_pdf(arquivos_pdf):
-    """Extrai e concatena o texto de até 3 PDFs, limitando a 10.000 caracteres."""
+    """Extrai e concatena TODO o texto de todos os PDFs (sem limite)."""
     texto_completo = ""
     for arquivo in arquivos_pdf:
         try:
@@ -19,13 +19,12 @@ def extrair_texto_pdf(arquivos_pdf):
                         texto_completo += texto_extraido + "\n"
         except Exception as e:
             st.error(f"Erro ao ler o arquivo {arquivo.name}: {e}")
-    return texto_completo[:10000]
+    return texto_completo
 
 def carregar_dados_csv(arquivo_csv):
     """Carrega o arquivo CSV enviado pelo usuário."""
     if arquivo_csv is None:
         return None
-    
     try:
         conteudo = arquivo_csv.read().decode('utf-8')
         df = pd.read_csv(io.StringIO(conteudo), sep=';', quotechar='"')
@@ -46,17 +45,19 @@ def inicializar_sessao():
         st.session_state.perguntas_filtradas = []
     if 'csv_file_name' not in st.session_state:
         st.session_state.csv_file_name = None
+    if 'contexto_pdf' not in st.session_state:
+        st.session_state.contexto_pdf = None
 
 def main():
     inicializar_sessao()
     
-    st.title("📄 Analisador de Editais com IA 🎯")
+    st.title("📄 Analisador de Editais com DeepSeek AI (Versão Web)")
     st.markdown("""
     Este aplicativo analisa seus documentos PDF e responde perguntas automáticas baseadas nos editais
     cadastrados no arquivo `bd.csv` que você fará upload.
     """)
 
-    # --- BARRA LATERAL: Configuração e CSV ---
+    # --- BARRA LATERAL ---
     st.sidebar.header("🔧 Configuração Inicial")
     
     # 1. Chave da API
@@ -89,6 +90,7 @@ def main():
             st.session_state.api_key = ""
             st.session_state.perguntas_filtradas = []
             st.session_state.csv_file_name = None
+            st.session_state.contexto_pdf = None
             st.rerun()
     
     # Processar carregamento
@@ -125,9 +127,8 @@ def main():
         st.sidebar.warning("⚠️ Aguardando carregamento...")
     
     st.sidebar.divider()
-    st.sidebar.info("ℹ️ Após carregar os dados, faça upload dos PDFs na área principal.")
     
-    # --- ÁREA PRINCIPAL: Upload de PDFs e análise ---
+    # --- ÁREA PRINCIPAL ---
     
     if not st.session_state.dados_carregados:
         st.info("👈 **Para começar, complete as etapas na barra lateral:**\n\n"
@@ -136,30 +137,27 @@ def main():
                 "3. Clique em **'Carregar Dados'**")
         return
     
-    # --- UPLOAD DE PDFs NA ÁREA PRINCIPAL ---
-    st.subheader("📄 Documentação para análise (em pdf)")
-    st.markdown("Faça upload dos documentos do projeto que será avaliado (formulário de inscrição, currículos, anexos, etc.)")
+    # Upload de PDFs
+    st.subheader("📄 Documentos do Proponente (PDF)")
     
     uploaded_files = st.file_uploader(
-        "📁 Selecione até 3 arquivos PDF",
+        "Faça upload de até 3 PDFs",
         type="pdf",
-        accept_multiple_files=True,
-        help="Envie os PDFs do projeto que será avaliado"
+        accept_multiple_files=True
     )
     
     if uploaded_files and len(uploaded_files) > 3:
         st.warning("⚠️ Apenas os 3 primeiros arquivos serão processados.")
         uploaded_files = uploaded_files[:3]
     
-    # Mostrar arquivos enviados
+    # Processa os PDFs automaticamente quando são enviados
     if uploaded_files:
-        st.success(f"✅ {len(uploaded_files)} arquivo(s) carregado(s):")
-        for f in uploaded_files:
-            st.write(f"   📄 {f.name} ({round(f.size/1024, 1)} KB)")
+        with st.spinner("Lendo PDFs..."):
+            st.session_state.contexto_pdf = extrair_texto_pdf(uploaded_files)
     
     st.divider()
     
-    # Seleção do edital e perguntas
+    # Seleção do edital
     df_perguntas = st.session_state.df_perguntas
     api_key = st.session_state.api_key
     
@@ -171,93 +169,63 @@ def main():
         )
         
         perguntas_filtradas = df_perguntas[df_perguntas['edital'] == edital_selecionado]['pergunta'].tolist()
-        st.session_state.perguntas_filtradas = perguntas_filtradas
         
-        st.info(f"📋 O sistema responderá **{len(perguntas_filtradas)} perguntas** baseadas nos PDFs enviados.")
+        st.info(f"📋 O sistema responderá {len(perguntas_filtradas)} perguntas")
         
-        with st.expander("👁️ Visualizar perguntas do edital"):
+        with st.expander("Visualizar perguntas do edital"):
             for idx, p in enumerate(perguntas_filtradas, 1):
                 st.write(f"{idx}. {p}")
         
-        # --- Botão de Processamento ---
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            botao_gerar = st.button("🚀 Gerar Respostas", type="primary", use_container_width=True)
-        
-        if botao_gerar:
+        # Botão Gerar Respostas
+        if st.button("🚀 Gerar Respostas", type="primary", use_container_width=True):
             if not uploaded_files:
-                st.error("❌ Por favor, faça upload de pelo menos um arquivo PDF do proponente.")
+                st.error("❌ Faça upload de pelo menos um PDF")
+            elif not st.session_state.contexto_pdf:
+                st.error("❌ Não foi possível extrair texto dos PDFs")
             elif not api_key:
-                st.error("❌ Chave da API não encontrada. Recarregue os dados na barra lateral.")
+                st.error("❌ Chave da API não encontrada")
             else:
-                with st.spinner("📄 Extraindo texto dos PDFs e consultando a IA..."):
-                    contexto_pdf = extrair_texto_pdf(uploaded_files)
+                with st.spinner("Consultando a IA..."):
+                    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
                     
-                    if not contexto_pdf.strip():
-                        st.error("❌ Não foi possível extrair texto dos PDFs. Verifique se são arquivos de texto e não apenas imagens.")
-                    else:
-                        # Mostrar preview do contexto extraído (opcional)
-                        with st.expander("🔍 Preview do texto extraído (primeiros 500 caracteres)"):
-                            st.text(contexto_pdf[:500] + "...")
-                        
-                        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
-                        
-                        st.subheader("📊 Resultados da Avaliação")
-                        st.markdown("---")
-                        
-                        # Barra de progresso
-                        progress_bar = st.progress(0)
-                        
-                        for i, pergunta in enumerate(perguntas_filtradas):
-                            progress_bar.progress((i + 1) / len(perguntas_filtradas))
+                    st.subheader("📊 Resultados da Avaliação")
+                    
+                    for i, pergunta in enumerate(perguntas_filtradas):
+                        try:
+                            response = client.chat.completions.create(
+                                model="deepseek-chat",
+                                messages=[
+                                    {
+                                        "role": "system",
+                                        "content": (
+                                            "Você é um AVALIADOR CRÍTICO E RIGOROSO de editais culturais.\n\n"
+                                            "REGRAS:\n"
+                                            "1. Seja EXIGENTE e DESCONFIADO.\n"
+                                            "2. Nota máxima só para projetos EXCEPCIONAIS.\n"
+                                            "3. Aponte FORÇOS e FRACOS.\n\n"
+                                            "FORMATO: Nota: X - FORÇOS: [lista] / FRACOS: [lista] - Justificativa.\n"
+                                            "Para perguntas sem nota: responda com UMA frase curta."
+                                        )
+                                    },
+                                    {
+                                        "role": "user", 
+                                        "content": f"Documentos do proponente:\n{st.session_state.contexto_pdf}\n\nPergunta:\n{pergunta}"
+                                    }
+                                ],
+                                stream=False,
+                                max_tokens=400,
+                                temperature=0.2
+                            )
                             
-                            with st.spinner(f"Processando pergunta {i+1}/{len(perguntas_filtradas)}..."):
-                                try:
-                                    response = client.chat.completions.create(
-                                        model="deepseek-chat",
-                                        messages=[
-                                            {
-                                                "role": "system",
-                                                "content": (
-                                                    "Você é um AVALIADOR CRÍTICO E RIGOROSO de editais culturais, membro da comissão de avaliação.\n\n"
-                                                    "REGRAS OBRIGATÓRIAS DE AVALIAÇÃO (TOM CRÍTICO):\n"
-                                                    "1. Seja EXIGENTE e DESCONFIADO. Não assuma que o projeto é bom por padrão.\n"
-                                                    "2. A nota máxima só deve ser dada para projetos EXCEPCIONAIS, com evidências concretas.\n"
-                                                    "3. Para cada nota, aponte equilíbrio entre PONTOS FORTES e PONTOS FRACOS.\n"
-                                                    "4. Desconfie de: informações vagas, promessas sem detalhamento, orçamentos incoerentes, cronogramas irreais.\n"
-                                                    "5. Se faltarem informações essenciais, REDUZA A NOTA e mencione a deficiência.\n"
-                                                    "6. Seja direto e incisivo. Use termos como 'insuficiente', 'não comprovado', 'frágil', 'inconsistente'.\n\n"
-                                                    "FORMATO OBRIGATÓRIO (para perguntas com nota):\n"
-                                                    "Nota: X - FORÇOS: [lista] / FRACOS: [lista] - Justificativa final.\n\n"
-                                                    "Para perguntas sem nota (nome, título, sim/não): responda com UMA única frase curta.\n"
-                                                    "Para o resumo crítico: três parágrafos (máximo 7 linhas cada) com análise de riscos e inconsistências."
-                                                )
-                                            },
-                                            {
-                                                "role": "user", 
-                                                "content": f"Documentos do proponente (formulário de inscrição e anexos):\n{contexto_pdf}\n\nPergunta do avaliador:\n{pergunta}"
-                                            }
-                                        ],
-                                        stream=False,
-                                        max_tokens=400,
-                                        temperature=0.2
-                                    )
-                                    
-                                    resposta_texto = response.choices[0].message.content
-                                    
-                                    # Expansor para cada resposta
-                                    with st.expander(f"📌 Pergunta {i+1}: {pergunta[:100]}{'...' if len(pergunta) > 100 else ''}", expanded=False):
-                                        st.markdown(f"**Pergunta completa:** {pergunta}")
-                                        st.markdown("**Resposta:**")
-                                        st.markdown(f"> {resposta_texto}")
-                                        st.divider()
-                                        
-                                except Exception as e:
-                                    st.error(f"❌ Erro ao processar a pergunta {i+1}: {str(e)[:200]}")
-                        
-                        progress_bar.empty()
-                        st.success("✅ Avaliação concluída com sucesso!")
-                        st.balloons()
+                            resposta_texto = response.choices[0].message.content
+                            
+                            with st.expander(f"Pergunta {i+1}: {pergunta[:80]}...", expanded=False):
+                                st.markdown(resposta_texto)
+                                
+                        except Exception as e:
+                            st.error(f"Erro na pergunta {i+1}: {str(e)[:150]}")
+                    
+                    st.success("✅ Avaliação concluída!")
 
 if __name__ == "__main__":
     main()
